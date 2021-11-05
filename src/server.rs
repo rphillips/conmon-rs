@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result};
 use conmon::{
     conmon_server::{Conmon, ConmonServer},
     VersionRequest, VersionResponse,
@@ -83,9 +83,10 @@ impl Conmon for ConmonServerImpl {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50051".parse()?;
+async fn main() -> Result<(), Error> {
     let server = ConmonServerImpl::new()?;
+
+    let addr = server.config.listen_addr().parse()?;
 
     Server::builder()
         .add_service(ConmonServer::new(server))

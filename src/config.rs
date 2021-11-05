@@ -1,10 +1,10 @@
 //! Configuration related structures
-use anyhow::{bail, Result};
+use anyhow::{anyhow, Error};
 use clap::{crate_version, Parser};
 use derive_builder::Builder;
 use getset::{CopyGetters, Getters, Setters};
+use log::LevelFilter;
 use serde::{Deserialize, Serialize};
-use log::{LevelFilter};
 use std::{env, path::PathBuf};
 
 macro_rules! prefix {
@@ -45,16 +45,27 @@ pub struct Config {
     )]
     /// PID file for the conmon server.
     conmon_pidfile: Option<PathBuf>,
-    
+
     #[get = "pub"]
     #[clap(
         env(concat!(prefix!(), "RUNTIME")),
         long("runtime"),
         short('r'),
-        value_name("PATH")
+        value_name("RUNTIME")
     )]
     /// Path of the OCI runtime to use to operate on the containers.
     runtime: PathBuf,
+
+    #[get = "pub"]
+    #[clap(
+        env(concat!(prefix!(), "LISTEN_ADDR")),
+        long("listen-addr"),
+        short('L'),
+        default_value("[::0]:50051"),
+        value_name("LISTEN_ADDR")
+    )]
+    /// PID file for the conmon server.
+    listen_addr: String,
 }
 
 impl Default for Config {
@@ -65,12 +76,13 @@ impl Default for Config {
 
 impl Config {
     /// Validate the configuration integrity.
-    pub fn validate(&mut self) -> Result<()> {
+    pub fn validate(&mut self) -> Result<(), Error> {
         if !self.runtime().exists() {
-            bail!("runtime path '{}' does not exist", self.runtime().display())
+            return Err(anyhow!(
+                "runtime path '{}' does not exist",
+                self.runtime().display()
+            ));
         }
-
         Ok(())
     }
 }
-
