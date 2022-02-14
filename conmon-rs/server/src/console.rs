@@ -203,7 +203,7 @@ mod tests {
 
         // Write to the slave
         let mut file = unsafe { fs::File::from_raw_fd(res.slave) };
-        file.write(b"test").await?;
+        let _ = file.write(b"test").await?;
 
         Ok(())
     }
