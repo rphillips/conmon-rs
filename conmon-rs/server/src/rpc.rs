@@ -105,12 +105,14 @@ impl conmon::Server for Server {
         );
         let children = self.children.read().unwrap();
         let child = children.get(id);
-        if child.is_none() {
+        let child = if let Some(c) = child {
+            c
+        } else {
             let mut resp = results.get().init_response();
             resp.set_exit_code(-1);
             return Promise::ok(());
-        }
-        debug!("found child with id {}", child.unwrap().id);
+        };
+        debug!("found child with id {}", child.id);
         let child_reaper = Arc::clone(self.reaper());
         Promise::from_future(async move {
             let (exit_status, stdout, stderr) = child_reaper
