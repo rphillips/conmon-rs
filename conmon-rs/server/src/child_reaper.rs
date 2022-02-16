@@ -8,7 +8,7 @@ use nix::sys::signal::{kill, Signal};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
 use std::path::{Path, PathBuf};
-use std::process::{ExitStatus, Stdio};
+use std::process::{ExitStatus, Output, Stdio};
 use std::{collections::HashMap, fs::File, io::Write, sync::Arc, sync::Mutex};
 
 impl ChildReaper {
@@ -32,7 +32,7 @@ impl ChildReaper {
         command: &Path,
         args: Vec<String>,
         timeout: i32,
-    ) -> Result<(ExitStatus, String, String)> {
+    ) -> Result<Output> {
         let child = tokio::process::Command::new(command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -49,10 +49,8 @@ impl ChildReaper {
                 return Err(format_err!("timeout error"))
             },
             status = child.wait_with_output() => {
-                 let output = status.expect("blah");
-                 let stdout = String::from_utf8(output.stdout)?;
-                 let stderr = String::from_utf8(output.stderr)?;
-                 Ok((output.status, stdout, stderr))
+                 let output = status.expect("status expected");
+                 Ok(output)
             }
         }
     }

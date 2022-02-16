@@ -115,14 +115,18 @@ impl conmon::Server for Server {
         debug!("found child with id {}", child.id);
         let child_reaper = Arc::clone(self.reaper());
         Promise::from_future(async move {
-            let (exit_status, stdout, stderr) = child_reaper
+            let output = child_reaper
                 .exec_sync(&runtime, command, timeout)
                 .await
                 .map_err(|e| Error::new(ErrorKind::Other, format!("Error {}", e)))?;
             let mut resp = results.get().init_response();
-            resp.set_exit_code(exit_status.code().unwrap());
-            resp.set_stdout(stdout.as_str());
-            resp.set_stderr(stderr.as_str());
+            if let Some(code) = output.status.code() {
+                resp.set_exit_code(code);
+            }
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            resp.set_stdout(&stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            resp.set_stderr(&stderr);
             Ok(())
         })
     }
