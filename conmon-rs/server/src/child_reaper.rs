@@ -136,7 +136,7 @@ impl ReapableChild {
         });
     }
 
-    fn write_to_exit_paths(&self, code: i32, paths: &Vec<PathBuf>) -> Result<()> {
+    fn write_to_exit_paths(&self, code: i32, paths: &[PathBuf]) -> Result<()> {
         let code_str = format!("{}", code);
         for path in paths {
             debug!("writing exit code {} to {}", code, path.display());
