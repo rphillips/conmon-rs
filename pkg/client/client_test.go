@@ -215,6 +215,72 @@ var _ = Describe("ConmonClient", func() {
 			Expect(result.Stdout, "hello world")
 			Expect(result.Stderr, "")
 		})
+
+		It("should succeeed with stderr", func() {
+			terminal := false
+			createRuntimeConfigWithProcessArgs(terminal, []string{"/busybox", "sleep", "10"})
+
+			sut = configGivenEnv(socketPath, pidFilePath, rr.runtimeRoot)
+			Expect(WaitUntilServerUp(sut)).To(BeNil())
+			pid, err := sut.CreateContainer(context.Background(), &client.CreateContainerConfig{
+				ID:         ctrID,
+				BundlePath: tmpDir,
+				Terminal:   terminal,
+			})
+			Expect(err).To(BeNil())
+			Expect(pid).NotTo(Equal(0))
+			Eventually(func() error {
+				return rr.RunCommandCheckOutput(ctrID, "list")
+			}, time.Second*5).Should(BeNil())
+
+			// Start the container
+			Expect(rr.RunCommand("start", ctrID)).To(BeNil())
+
+			// Wait for container to be running
+			Eventually(func() error {
+				return rr.RunCommandCheckOutput("running", "list")
+			}, time.Second*10).Should(BeNil())
+
+			result, err := sut.ExecSyncContainer(context.Background(), ctrID, []string{"/busybox", "echo", "hello", "world", ">>", "/dev/stderr"}, -1)
+			Expect(err).To(BeNil())
+			Expect(result.ExitCode).To(Equal(int32(0)))
+			Expect(result.Stdout, "")
+			Expect(result.Stderr, "hello world")
+		})
+
+		It("should timeout", func() {
+			terminal := false
+			createRuntimeConfigWithProcessArgs(terminal, []string{"/busybox", "sleep", "10"})
+
+			sut = configGivenEnv(socketPath, pidFilePath, rr.runtimeRoot)
+			Expect(WaitUntilServerUp(sut)).To(BeNil())
+			pid, err := sut.CreateContainer(context.Background(), &client.CreateContainerConfig{
+				ID:         ctrID,
+				BundlePath: tmpDir,
+				Terminal:   terminal,
+			})
+			Expect(err).To(BeNil())
+			Expect(pid).NotTo(Equal(0))
+			Eventually(func() error {
+				return rr.RunCommandCheckOutput(ctrID, "list")
+			}, time.Second*5).Should(BeNil())
+
+			// Start the container
+			Expect(rr.RunCommand("start", ctrID)).To(BeNil())
+
+			// Wait for container to be running
+			Eventually(func() error {
+				return rr.RunCommandCheckOutput("running", "list")
+			}, time.Second*10).Should(BeNil())
+
+			result, err := sut.ExecSyncContainer(context.Background(), ctrID, []string{"/busybox", "sleep", "10"}, 3)
+
+			Expect(err).To(BeNil())
+			Expect(result.ExitCode).To(Equal(int32(255)))
+			Expect(result.Stdout, "")
+			Expect(result.Stderr, "")
+
+		})
 	})
 })
 

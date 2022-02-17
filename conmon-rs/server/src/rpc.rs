@@ -96,18 +96,23 @@ impl conmon::Server for Server {
             return Promise::ok(());
         };
         Promise::from_future(async move {
-            let output = child_reaper
-                .exec_sync(&runtime, command, timeout)
-                .await
-                .map_err(|e| IOError::new(ErrorKind::Other, format!("Error {}", e)))?;
-            let mut resp = results.get().init_response();
-            if let Some(code) = output.status.code() {
-                resp.set_exit_code(code);
+            match child_reaper.exec_sync(&runtime, command, timeout).await {
+                Ok(output) => {
+                    let mut resp = results.get().init_response();
+                    if let Some(code) = output.status.code() {
+                        resp.set_exit_code(code);
+                    }
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    resp.set_stdout(&stdout);
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    resp.set_stderr(&stderr);
+                }
+                Err(_) => {
+                    debug!("rphillips");
+                    let mut resp = results.get().init_response();
+                    resp.set_exit_code(255);
+                }
             }
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            resp.set_stdout(&stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            resp.set_stderr(&stderr);
             Ok(())
         })
     }

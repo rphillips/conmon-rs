@@ -1,7 +1,7 @@
 //! Child process reaping and management.
 use crate::child::Child;
 use crate::console::Console;
-use anyhow::{bail, format_err, Context, Result};
+use anyhow::{format_err, Context, Result};
 use getset::Getters;
 use log::{debug, error};
 use multimap::MultiMap;
@@ -12,10 +12,17 @@ use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
 use std::sync::Mutex;
 use std::{fs::File, io::Write, sync::Arc};
+use thiserror::Error;
 
 #[derive(Debug, Default)]
 pub struct ChildReaper {
     grandchildren: Arc<Mutex<MultiMap<String, ReapableChild>>>,
+}
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("timeout")]
+    TimeoutError,
 }
 
 impl ChildReaper {
@@ -73,17 +80,13 @@ impl ChildReaper {
             .spawn()
             .map_err(|e| format_err!("spawn child process: {}", e))?;
 
-        let delay = tokio::time::sleep(tokio::time::Duration::from_secs(timeout as u64));
-        tokio::pin!(delay);
-        tokio::select! {
-            _ = &mut delay => {
-                debug!("timeout");
-                bail!("timeout error");
-            },
-            status = child.wait_with_output() => {
-                 Ok(status?)
-            }
-        }
+        let timeout = tokio::time::Duration::from_secs(timeout as u64);
+        let result = tokio::time::timeout(timeout, child.wait_with_output())
+            .await
+            .context(crate::child_reaper::Error::TimeoutError {})?
+            .context("exec sync spawn error")?;
+
+        Ok(result)
     }
 
     pub fn watch_grandchild(&self, child: Child) -> Result<()> {
