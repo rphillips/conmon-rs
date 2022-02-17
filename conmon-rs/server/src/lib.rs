@@ -247,14 +247,14 @@ impl Server {
         let command = req.get_command()?;
         let runtime_root = self.config().runtime_root();
 
-        let mut args: Vec<String> = vec![];
+        let mut args = vec![];
         if let Some(rr) = runtime_root {
             args.push(format!("--root={}", rr.display()));
         }
         args.push("exec".to_string());
         args.push(id);
         for value in command.iter() {
-            args.push(value.unwrap().to_string());
+            args.push(value?.to_string());
         }
 
         debug!("Exec args {:?}", args.join(" "));

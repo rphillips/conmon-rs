@@ -1,14 +1,13 @@
 //! Child process reaping and management.
 use crate::child::Child;
 use crate::console::Console;
-use anyhow::{format_err, Context, Result};
+use anyhow::{bail, format_err, Context, Result};
 use getset::Getters;
 use log::{debug, error};
 use multimap::MultiMap;
 use nix::sys::signal::{kill, Signal};
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::Pid;
-use std::io::{Error as IOError, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
 use std::sync::Mutex;
@@ -42,10 +41,9 @@ impl ChildReaper {
         let mut cmd = tokio::process::Command::new(cmd);
         cmd.args(args);
         cmd.spawn()
-            .map_err(|e| format_err!("spawn child process: {}", e))?
+            .context("spawn child process: {}")?
             .wait()
-            .await
-            .map_err(|e| format_err!("wait for child process: {}", e))?;
+            .await?;
 
         if let Some(console) = console {
             let _ = console
@@ -56,12 +54,7 @@ impl ChildReaper {
         let grandchild_pid = tokio::fs::read_to_string(pidfile)
             .await?
             .parse::<i32>()
-            .map_err(|e| {
-                IOError::new(
-                    ErrorKind::Other,
-                    format!("grandchild pid parse error {}", e),
-                )
-            })?;
+            .context("grandchild pid parse error")?;
 
         Ok(grandchild_pid)
     }
@@ -85,11 +78,10 @@ impl ChildReaper {
         tokio::select! {
             _ = &mut delay => {
                 debug!("timeout");
-                return Err(format_err!("timeout error"))
+                bail!("timeout error");
             },
             status = child.wait_with_output() => {
-                 let output = status.expect("status expected");
-                 Ok(output)
+                 Ok(status?)
             }
         }
     }
