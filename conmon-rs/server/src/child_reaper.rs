@@ -26,11 +26,12 @@ pub enum Error {
 }
 
 impl ChildReaper {
-    pub fn exists(&self, id: String) -> bool {
+    pub fn get(&self, id: String) -> Result<ReapableChild> {
         let locked_grandchildren = Arc::clone(&self.grandchildren);
         let lock = locked_grandchildren.lock().unwrap();
-        let child = lock.get(id.as_str());
-        child.is_some()
+        let r = lock.get(&id).context("")?.clone();
+        drop(lock);
+        Ok(r)
     }
 
     pub async fn create_child<P, I, S>(
@@ -68,6 +69,7 @@ impl ChildReaper {
 
     pub async fn exec_sync(
         &self,
+        _child: &ReapableChild,
         command: &Path,
         args: Vec<String>,
         timeout: i32,
@@ -132,7 +134,7 @@ impl ChildReaper {
     }
 }
 
-#[derive(Default, Debug, Getters)]
+#[derive(Default, Debug, Getters, Clone)]
 pub struct ReapableChild {
     #[getset(get)]
     exit_paths: Vec<PathBuf>,

@@ -79,7 +79,7 @@ impl conmon::Server for Server {
         mut results: conmon::ExecSyncContainerResults,
     ) -> Promise<(), capnp::Error> {
         let req = pry!(pry!(params.get()).get_request());
-        let id = pry!(req.get_id());
+        let id = pry!(req.get_id()).to_string();
         let timeout = req.get_timeout();
         let command = self.generate_exec_sync_args(&params).unwrap();
         let runtime = self.config.runtime().clone();
@@ -90,13 +90,19 @@ impl conmon::Server for Server {
             command.join(" ")
         );
         let child_reaper = Arc::clone(self.reaper());
-        if !child_reaper.exists(id.to_string()) {
+        let child = if let Ok(c) = child_reaper.get(id) {
+            c
+        } else {
             let mut resp = results.get().init_response();
             resp.set_exit_code(-1);
             return Promise::ok(());
         };
+
         Promise::from_future(async move {
-            match child_reaper.exec_sync(&runtime, command, timeout).await {
+            match child_reaper
+                .exec_sync(&child, &runtime, command, timeout)
+                .await
+            {
                 Ok(output) => {
                     let mut resp = results.get().init_response();
                     if let Some(code) = output.status.code() {
@@ -108,9 +114,8 @@ impl conmon::Server for Server {
                     resp.set_stderr(&stderr);
                 }
                 Err(_) => {
-                    debug!("rphillips");
                     let mut resp = results.get().init_response();
-                    resp.set_exit_code(255);
+                    resp.set_exit_code(-2);
                 }
             }
             Ok(())
