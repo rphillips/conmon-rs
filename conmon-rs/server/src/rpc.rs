@@ -1,9 +1,9 @@
 use crate::{child::Child, console::Console, iostreams::IOStreams, version::Version, Server};
-use anyhow::Context;
 use capnp::{capability::Promise, Error};
 use capnp_rpc::pry;
 use conmon_common::conmon_capnp::conmon;
 use log::debug;
+use std::io::{Error as IOError, ErrorKind};
 use std::{path::PathBuf, sync::Arc};
 
 macro_rules! pry_err {
@@ -34,7 +34,6 @@ impl conmon::Server for Server {
         params: conmon::CreateContainerParams,
         mut results: conmon::CreateContainerResults,
     ) -> Promise<(), capnp::Error> {
-        use std::io::{Error as IOError, ErrorKind};
         let req = pry!(pry!(params.get()).get_request());
         debug!(
             "Got a create container request for id {}",
@@ -50,38 +49,26 @@ impl conmon::Server for Server {
 
         let pidfile = pry!(pidfile_from_params(&params));
         let child_reaper = Arc::clone(self.reaper());
-        let children = Arc::clone(self.children());
         let args = pry_err!(self.generate_runtime_args(&params, &maybe_console, &pidfile));
         let runtime = self.config().runtime().clone();
         let id = req.get_id().unwrap().to_string();
         let exit_paths = pry!(path_vec_from_text_list(pry!(req.get_exit_paths())));
 
         Promise::from_future(async move {
-            let status = child_reaper
-                .create_child(runtime, args)
+            let grandchild_pid = child_reaper
+                .create_child(runtime, args, maybe_console, pidfile)
                 .await
                 .map_err(|e| IOError::new(ErrorKind::Other, format!("Error {}", e)))?;
 
-            debug!("Status for container ID {} is {}", id, status);
-
-            if let Some(console) = maybe_console {
-                let _ = console
-                    .wait_connected()
-                    .context("wait for console socket connection");
-            }
-
-            let pid = tokio::fs::read_to_string(pidfile)
-                .await?
-                .parse::<i32>()
-                .map_err(|e| IOError::new(ErrorKind::Other, format!("pid parse error {}", e)))?;
-
-            // register child with server
-            let child = Child::new(id, pid, exit_paths);
-            let _ = child_reaper.watch_grandchild(&child);
-            children.write().unwrap().insert(child.id.clone(), child);
+            // register grandchild with server
+            let child = Child::new(id, grandchild_pid, exit_paths);
+            let _ = child_reaper.watch_grandchild(child);
 
             // TODO FIXME why convert?
-            results.get().init_response().set_container_pid(pid as u32);
+            results
+                .get()
+                .init_response()
+                .set_container_pid(grandchild_pid as u32);
             Ok(())
         })
     }
@@ -91,7 +78,6 @@ impl conmon::Server for Server {
         params: conmon::ExecSyncContainerParams,
         mut results: conmon::ExecSyncContainerResults,
     ) -> Promise<(), capnp::Error> {
-        use std::io::{Error, ErrorKind};
         let req = pry!(pry!(params.get()).get_request());
         let id = pry!(req.get_id());
         let timeout = req.get_timeout();
@@ -103,22 +89,17 @@ impl conmon::Server for Server {
             timeout,
             command.join(" ")
         );
-        let children = self.children.read().unwrap();
-        let child = children.get(id);
-        let child = if let Some(c) = child {
-            c
-        } else {
+        let child_reaper = Arc::clone(self.reaper());
+        if !child_reaper.exists(id.to_string()) {
             let mut resp = results.get().init_response();
             resp.set_exit_code(-1);
             return Promise::ok(());
         };
-        debug!("found child with id {}", child.id);
-        let child_reaper = Arc::clone(self.reaper());
         Promise::from_future(async move {
             let output = child_reaper
                 .exec_sync(&runtime, command, timeout)
                 .await
-                .map_err(|e| Error::new(ErrorKind::Other, format!("Error {}", e)))?;
+                .map_err(|e| IOError::new(ErrorKind::Other, format!("Error {}", e)))?;
             let mut resp = results.get().init_response();
             if let Some(code) = output.status.code() {
                 resp.set_exit_code(code);

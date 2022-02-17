@@ -14,14 +14,7 @@ use nix::{
     sys::signal::Signal,
     unistd::{fork, ForkResult},
 };
-use std::{
-    collections::HashMap,
-    fs::File,
-    io::Write,
-    path::Path,
-    process,
-    sync::{Arc, RwLock},
-};
+use std::{fs::File, io::Write, path::Path, process, sync::Arc};
 use tokio::{
     fs,
     net::UnixListener,
@@ -53,9 +46,6 @@ pub struct Server {
 
     #[getset(get, get_mut)]
     reaper: Arc<child_reaper::ChildReaper>,
-
-    #[getset(get, get_mut)]
-    children: Arc<RwLock<HashMap<String, child::Child>>>,
 }
 
 impl Server {
