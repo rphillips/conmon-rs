@@ -69,26 +69,26 @@ impl ChildReaper {
 
     pub async fn exec_sync(
         &self,
-        _child: &ReapableChild,
+        pidfile: &PathBuf,
         command: &Path,
         args: Vec<String>,
         timeout: i32,
-    ) -> Result<Output> {
-        let child = tokio::process::Command::new(command)
+    ) -> Result<i32> {
+        let mut child = tokio::process::Command::new(command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
             .args(args)
             .spawn()
             .map_err(|e| format_err!("spawn child process: {}", e))?;
 
-        let timeout = tokio::time::Duration::from_secs(timeout as u64);
-        let result = tokio::time::timeout(timeout, child.wait_with_output())
-            .await
-            .context(crate::child_reaper::Error::TimeoutError {})?
-            .context("exec sync spawn error")?;
+        child.wait().await;
 
-        Ok(result)
+        let grandchild_pid = tokio::fs::read_to_string(pidfile)
+            .await?
+            .parse::<i32>()
+            .context("grandchild pid parse error")?;
+
+        Ok(grandchild_pid)
     }
 
     pub fn watch_grandchild(&self, child: Child) -> Result<()> {
@@ -127,32 +127,32 @@ impl ChildReaper {
             .map_err(|e| format_err!("lock grandchildren: {}", e))?
             .iter()
         {
-            debug!("killing pid {}", grandchild.pid());
-            kill(Pid::from_raw(*grandchild.pid()), s)?;
+            debug!("killing pid {}", grandchild.pid);
+            kill(Pid::from_raw(grandchild.pid), s)?;
         }
         Ok(())
     }
 }
 
-#[derive(Default, Debug, Getters, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct ReapableChild {
-    #[getset(get)]
-    exit_paths: Vec<PathBuf>,
-    #[getset(get)]
-    pid: i32,
+    pub exit_paths: Vec<PathBuf>,
+    pub pid: i32,
+    pub bundle_path: String,
 }
 
 impl ReapableChild {
     pub fn from_child(child: &Child) -> Self {
         Self {
-            pid: child.pid,
             exit_paths: child.exit_paths.clone(),
+            pid: child.pid,
+            bundle_path: child.bundle_path.clone(),
         }
     }
 
     fn watch(&self) -> tokio::sync::oneshot::Receiver<()> {
-        let exit_paths = self.exit_paths().clone();
-        let pid = *self.pid();
+        let exit_paths = self.exit_paths.clone();
+        let pid = self.pid;
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         tokio::task::spawn_blocking(move || {
@@ -177,7 +177,7 @@ impl ReapableChild {
     }
 }
 
-fn write_to_exit_paths(code: i32, paths: &[PathBuf]) -> Result<()> {
+async fn write_to_exit_paths(code: i32, paths: &[PathBuf]) -> Result<()> {
     let code_str = format!("{}", code);
     for path in paths {
         debug!("writing exit code {} to {}", code, path.display());

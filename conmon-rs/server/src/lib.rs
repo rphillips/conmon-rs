@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use capnp_rpc::{rpc_twoparty_capnp::Side, twoparty, RpcSystem};
+use child_reaper::ReapableChild;
 use conmon_common::conmon_capnp::conmon;
 use futures::{AsyncReadExt, FutureExt};
 use getset::{Getters, MutGetters};
@@ -14,7 +15,13 @@ use nix::{
     sys::signal::Signal,
     unistd::{fork, ForkResult},
 };
-use std::{fs::File, io::Write, path::Path, process, sync::Arc};
+use std::{
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+    process,
+    sync::Arc,
+};
 use tokio::{
     fs,
     net::UnixListener,
@@ -25,6 +32,7 @@ use tokio::{
 };
 use tokio_util::compat::TokioAsyncReadCompatExt;
 use twoparty::VatNetwork;
+use uuid::Uuid;
 
 pub use version::Version;
 
@@ -240,6 +248,7 @@ impl Server {
     /// Generate the OCI runtime CLI arguments from the provided parameters.
     fn generate_exec_sync_args(
         &self,
+        pidfile: &PathBuf,
         params: &conmon::ExecSyncContainerParams,
     ) -> Result<Vec<String>> {
         let req = params.get()?.get_request()?;
@@ -247,16 +256,16 @@ impl Server {
         let command = req.get_command()?;
         let runtime_root = self.config().runtime_root();
 
-        let mut args = vec![];
+        let mut args = vec!["-d".to_string()];
         if let Some(rr) = runtime_root {
             args.push(format!("--root={}", rr.display()));
         }
+        args.push(format!("--pidfile={}", pidfile.display()));
         args.push("exec".to_string());
         args.push(id);
         for value in command.iter() {
             args.push(value?.to_string());
         }
-
         debug!("Exec args {:?}", args.join(" "));
         Ok(args)
     }

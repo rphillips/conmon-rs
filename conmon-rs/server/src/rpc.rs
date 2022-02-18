@@ -4,7 +4,9 @@ use capnp_rpc::pry;
 use conmon_common::conmon_capnp::conmon;
 use log::debug;
 use std::io::{Error as IOError, ErrorKind};
+use std::path::Path;
 use std::{path::PathBuf, sync::Arc};
+use uuid::Uuid;
 
 macro_rules! pry_err {
     ($x:expr) => {
@@ -48,6 +50,7 @@ impl conmon::Server for Server {
         };
 
         let pidfile = pry!(pidfile_from_params(&params));
+        let bundle_path = pry!(req.get_bundle_path()).to_string();
         let child_reaper = Arc::clone(self.reaper());
         let args = pry_err!(self.generate_runtime_args(&params, &maybe_console, &pidfile));
         let runtime = self.config().runtime().clone();
@@ -61,7 +64,7 @@ impl conmon::Server for Server {
                 .map_err(|e| IOError::new(ErrorKind::Other, format!("Error {}", e)))?;
 
             // register grandchild with server
-            let child = Child::new(id, grandchild_pid, exit_paths);
+            let child = Child::new(id, bundle_path, grandchild_pid, exit_paths);
             let _ = child_reaper.watch_grandchild(child);
 
             // TODO FIXME why convert?
@@ -81,16 +84,15 @@ impl conmon::Server for Server {
         let req = pry!(pry!(params.get()).get_request());
         let id = pry!(req.get_id()).to_string();
         let timeout = req.get_timeout();
-        let command = self.generate_exec_sync_args(&params).unwrap();
         let runtime = self.config.runtime().clone();
+
         debug!(
-            "Got exec sync container request for id {} with timeout {} : {}",
-            id,
-            timeout,
-            command.join(" ")
+            "Got exec sync container request for id {} with timeout {}",
+            id, timeout,
         );
+
         let child_reaper = Arc::clone(self.reaper());
-        let child = if let Ok(c) = child_reaper.get(id) {
+        let child = if let Ok(c) = child_reaper.get(id.clone()) {
             c
         } else {
             let mut resp = results.get().init_response();
@@ -98,20 +100,27 @@ impl conmon::Server for Server {
             return Promise::ok(());
         };
 
+        let pidfile = Path::new(&child.bundle_path)
+            .join(Uuid::new_v4().to_string())
+            .join(".pid");
+        let command = self.generate_exec_sync_args(&pidfile, &params).unwrap();
+
         Promise::from_future(async move {
             match child_reaper
-                .exec_sync(&child, &runtime, command, timeout)
+                .exec_sync(&pidfile, &runtime, command, timeout)
                 .await
             {
-                Ok(output) => {
+                Ok(grandchild_pid) => {
+                    // register grandchild with server
+                    let child = Child::new(
+                        id.clone(),
+                        child.bundle_path,
+                        grandchild_pid,
+                        child.exit_paths,
+                    );
+                    let _ = child_reaper.watch_grandchild(child);
                     let mut resp = results.get().init_response();
-                    if let Some(code) = output.status.code() {
-                        resp.set_exit_code(code);
-                    }
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    resp.set_stdout(&stdout);
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    resp.set_stderr(&stderr);
+                    resp.set_exit_code(0);
                 }
                 Err(_) => {
                     let mut resp = results.get().init_response();
