@@ -6,6 +6,7 @@ use anyhow::{bail, Context, Result};
 use getset::{Getters, MutGetters};
 use nix::errno::Errno;
 use std::{
+    io::{BufWriter, Cursor, Write},
     os::unix::io::{FromRawFd, RawFd},
     path::{Path, PathBuf},
     sync::Arc,
@@ -173,8 +174,10 @@ impl ContainerIO {
         time_to_timeout: Option<Instant>,
         receiver: &mut UnboundedReceiver<Message>,
     ) -> (Vec<u8>, bool) {
-        let mut stdio = vec![];
+        let cursor = Cursor::new(Vec::new());
+        let mut stdio = BufWriter::with_capacity(1024, cursor);
         let mut timed_out = false;
+
         loop {
             let msg = if let Some(time_to_timeout) = time_to_timeout {
                 match time::timeout_at(time_to_timeout, receiver.recv()).await {
@@ -193,11 +196,11 @@ impl ContainerIO {
             };
 
             match msg {
-                Message::Data(s) => stdio.extend(s),
+                Message::Data(s) => stdio.write_all(s.as_slice()).unwrap(),
                 Message::Done => break,
             }
         }
-        (stdio, timed_out)
+        (stdio.buffer().to_owned(), timed_out)
     }
 
     pub async fn read_loop(
