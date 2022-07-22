@@ -5,12 +5,12 @@ go 1.18
 require (
 	capnproto.org/go/capnp/v3 v3.0.0-alpha.3
 	github.com/containers/podman/v4 v4.1.1
-	github.com/containers/storage v1.41.0
+	github.com/containers/storage v1.42.0
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.19.0
 	github.com/opencontainers/runc v1.1.3
 	github.com/opencontainers/runtime-tools v0.9.1-0.20220110225228-7e2d60f1e41f
-	github.com/sirupsen/logrus v1.8.1
+	github.com/sirupsen/logrus v1.9.0
 )
 
 require (
@@ -26,9 +26,9 @@ require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
-	github.com/klauspost/compress v1.15.4 // indirect
+	github.com/klauspost/compress v1.15.9 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
-	github.com/moby/sys/mountinfo v0.6.1 // indirect
+	github.com/moby/sys/mountinfo v0.6.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.3-0.20220114050600-8b9d41f48198 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20211214071223-8958f93039ab // indirect
@@ -42,7 +42,7 @@ require (
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/sys v0.0.0-20220422013727-9388b58f7150 // indirect
+	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
