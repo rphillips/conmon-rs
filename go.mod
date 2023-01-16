@@ -3,7 +3,7 @@ module github.com/containers/conmon-rs
 go 1.18
 
 require (
-	capnproto.org/go/capnp/v3 v3.0.0-alpha.3
+	capnproto.org/go/capnp/v3 v3.0.0-alpha.23
 	github.com/containers/podman/v4 v4.1.1
 	github.com/containers/storage v1.41.0
 	github.com/onsi/ginkgo/v2 v2.1.4
